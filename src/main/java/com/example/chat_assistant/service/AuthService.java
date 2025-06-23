@@ -1,7 +1,6 @@
-package com.example.chat_assistant;
+package com.example.chat_assistant.service;
 
 import org.springframework.stereotype.Service;
-
 import java.io.*;
 import java.util.*;
 
@@ -34,7 +33,6 @@ public class AuthService {
         String site = "example.com";
         Map<String, String> users = new HashMap<>();
         if (!USER_FILE.exists()) return users;
-
         try (BufferedReader br = new BufferedReader(new FileReader(USER_FILE))) {
             String line;
             while ((line = br.readLine()) != null) {
@@ -97,4 +95,4 @@ public class AuthService {
         }
         return emails;
     }
-}
+} 

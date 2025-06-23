@@ -1,12 +1,15 @@
-package com.example.chat_assistant;
+package com.example.chat_assistant.controller;
 
+import com.example.chat_assistant.service.ChatService;
+import com.example.chat_assistant.service.AuthService;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import java.util.Map;
 import jakarta.servlet.http.HttpSession;
+import java.util.Map;
 import java.util.HashMap;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/chat")
@@ -40,7 +43,6 @@ public class ChatController {
     @Tool
     public Map<String, Object> simulateLogin(String ignoredSite, String email, String password, HttpSession session) {
         Map<String, Object> result = new HashMap<>();
-
         if (email == null || !email.contains("@") || password == null) {
             result.put("success", false);
             result.put("message", "Missing or invalid login data.");
@@ -51,12 +53,9 @@ public class ChatController {
             result.put("message", "Not enough data to simulate login.");
             return result;
         }
-
-        // Simulate login by storing in session
         session.setAttribute("loggedIn", true);
         session.setAttribute("email", email);
         session.setAttribute("site", "example.com");
-
         result.put("action", "login");
         result.put("email", email);
         result.put("password", password);
@@ -112,7 +111,7 @@ public class ChatController {
     }
 
     @Tool
-    public java.util.List<String> listUsers() {
+    public List<String> listUsers() {
         return authService.getAllEmails("example.com");
     }
 
@@ -131,7 +130,6 @@ public class ChatController {
             result.put("message", "Password incorrect.");
             return result;
         }
-        // Remove user from users.txt
         boolean deleted = authService.changePassword(email, "__DELETED__", "example.com");
         if (deleted) {
             session.invalidate();

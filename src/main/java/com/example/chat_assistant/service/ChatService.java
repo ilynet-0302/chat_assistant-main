@@ -1,4 +1,4 @@
-package com.example.chat_assistant;
+package com.example.chat_assistant.service;
 
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -77,4 +77,4 @@ public class ChatService {
         }
         return null;
     }
-} //./mvnw spring-boot:run
+} 
