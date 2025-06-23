@@ -36,18 +36,28 @@ if (document.getElementById('loginForm')) {
         }
         errorDiv.textContent = '';
         // Call backend to set session
-        fetch('/api/chat/login', {
+        fetch('/api/login', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ email, password })
         })
         .then(res => res.json())
         .then(data => {
-            loginModal.style.display = 'none';
-            // Update login info banner
-            if (loginInfoDiv && data.success && data.email && data.site) {
-                loginInfoDiv.textContent = `Logged in as ${data.email} at ${data.site}`;
-                loginInfoDiv.style.display = 'block';
+            if (data.success) {
+                loginModal.style.display = 'none';
+                if (loginInfoDiv && data.email && data.site) {
+                    loginInfoDiv.textContent = `Logged in as ${data.email} at ${data.site}`;
+                    loginInfoDiv.style.display = 'block';
+                    if (logoutBtn) logoutBtn.style.display = 'block';
+                }
+                errorDiv.textContent = '';
+            } else {
+                errorDiv.textContent = data.message || 'Login failed.';
+                if (loginInfoDiv) {
+                    loginInfoDiv.textContent = '';
+                    loginInfoDiv.style.display = 'none';
+                    if (logoutBtn) logoutBtn.style.display = 'none';
+                }
             }
         });
     });
@@ -61,9 +71,8 @@ if (document.getElementById('registerForm')) {
 
         const email = document.getElementById('regEmail').value.trim();
         const password = document.getElementById('regPassword').value.trim();
-        const site = document.getElementById('regSite').value.trim();
 
-        if (!email || !password || !site) {
+        if (!email || !password) {
             registerMsgDiv.style.color = "red";
             registerMsgDiv.textContent = "Please fill in all fields.";
             return;
@@ -72,7 +81,7 @@ if (document.getElementById('registerForm')) {
         fetch('/api/register', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ email, password, site })
+            body: JSON.stringify({ email, password })
         })
         .then(res => res.json())
         .then(data => {
@@ -81,7 +90,7 @@ if (document.getElementById('registerForm')) {
                 registerMsgDiv.textContent = "Registration successful. You can now log in.";
             } else {
                 registerMsgDiv.style.color = "red";
-                registerMsgDiv.textContent = "Email already registered for that site.";
+                registerMsgDiv.textContent = "Email already registered.";
             }
         })
         .catch(() => {
@@ -141,6 +150,7 @@ if (document.getElementById('chatForm')) {
                     if (loginInfoDiv && data.loggedIn && data.email && data.site) {
                         loginInfoDiv.textContent = `Logged in as ${data.email} at ${data.site}`;
                         loginInfoDiv.style.display = 'block';
+                        if (logoutBtn) logoutBtn.style.display = 'block';
                     }
                 });
         }
@@ -158,10 +168,28 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.loggedIn && data.email && data.site) {
                     loginInfoDiv.textContent = `Logged in as ${data.email} at ${data.site}`;
                     loginInfoDiv.style.display = 'block';
+                    if (logoutBtn) logoutBtn.style.display = 'block';
                 } else {
                     loginInfoDiv.textContent = '';
                     loginInfoDiv.style.display = 'none';
+                    if (logoutBtn) logoutBtn.style.display = 'none';
                 }
             });
     }
-}); 
+});
+
+const logoutBtn = document.getElementById('logoutBtn');
+if (logoutBtn) {
+    logoutBtn.addEventListener('click', function() {
+        fetch('/api/logout', { method: 'POST' })
+            .then(() => {
+                if (loginInfoDiv) {
+                    loginInfoDiv.textContent = '';
+                    loginInfoDiv.style.display = 'none';
+                }
+                logoutBtn.style.display = 'none';
+                // Optionally, show the login modal again
+                if (loginModal) loginModal.style.display = 'block';
+            });
+    });
+} 

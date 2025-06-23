@@ -41,29 +41,24 @@ public class ChatService {
                         try {
                             Map<String, Object> action = new com.fasterxml.jackson.databind.ObjectMapper().readValue(json, Map.class);
                             if ("login".equals(action.get("action"))) {
-                                String site = (String) action.getOrDefault("site", "the site");
                                 String email = (String) action.getOrDefault("email", "[no email]");
                                 // Store login state in session
                                 session.setAttribute("loggedIn", true);
-                                session.setAttribute("site", site);
+                                session.setAttribute("site", "example.com");
                                 session.setAttribute("email", email);
-                                return "Simulated login to " + site + " as " + email + ". You are now logged in!";
+                                return "Simulated login to example.com as " + email + ". You are now logged in!";
                             } else if ("register".equals(action.get("action"))) {
-                                String site = (String) action.getOrDefault("site", "the site");
                                 String email = (String) action.getOrDefault("email", "[no email]");
-                                return "Simulated registration at " + site + " for " + email + ".";
+                                return "Simulated registration at example.com for " + email + ".";
                             } else if ("none".equals(action.get("action"))) {
                                 return "No actionable command detected.";
                             }
-                        } catch (Exception e) {
-                            // Ignore JSON parse errors, fall back to plain content
-                        }
+                        } catch (Exception ignore) {}
                     }
                     // If user is logged in, show simulated account info
                     if (Boolean.TRUE.equals(session.getAttribute("loggedIn"))) {
-                        String site = (String) session.getAttribute("site");
                         String email = (String) session.getAttribute("email");
-                        return content + "\n\n[Logged in as " + email + " at " + site + "]";
+                        return content + "\n\n[Logged in as " + email + " at example.com]";
                     }
                     return content;
                 }

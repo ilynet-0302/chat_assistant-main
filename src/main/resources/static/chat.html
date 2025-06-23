@@ -7,7 +7,8 @@
     <link rel="stylesheet" href="style.css">
 </head>
 <body>
-    <div id="loginInfo" class="login-info"></div>
+    <div id="loginInfo" class="login-info" style="display: none;"></div>
+    <button id="logoutBtn" style="display: none; margin: 10px auto 0 auto;">Logout</button>
     <div class="chat-container">
         <h2>Chat Assistant</h2>
         <div id="chatWindow" class="chat-window"></div>
@@ -31,9 +32,9 @@
             <form id="registerForm">
                 <input type="email" id="regEmail" placeholder="Email" required />
                 <input type="password" id="regPassword" placeholder="Password" required />
-                <input type="text" id="regSite" placeholder="Site (e.g. example.com)" required />
                 <button type="submit">Register</button>
             </form>
+            <div id="registerMsg" class="error-message"></div>
             <div id="loginError" class="error-message"></div>
         </div>
     </div>
