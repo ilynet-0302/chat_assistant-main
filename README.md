@@ -185,3 +185,36 @@ Here are example phrases you can type to the chat assistant to trigger each tool
 - "I want to remove my account. Password: 1234."
 
 The LLM will recognize these requests and call the appropriate backend tool, automating the process for the user. 
+
+---
+
+## 9. Why This Approach? Tool Calling, @Tool, and Scaling Options
+
+### Why is the program designed this way?
+This application demonstrates how to connect a local LLM (like Llama 3) to backend automation tools in a way that is both practical and compatible with open-source models. Instead of relying on advanced (and often paid) LLM features like "native function calling," the backend uses a combination of:
+- **Prompt engineering:** The LLM is instructed to output a JSON object for specific actions (like registration, login, etc.).
+- **Output parsing:** The backend checks if the LLM's response matches a tool call, and if so, executes the corresponding Java method.
+
+This approach is robust, works with any LLM that can follow instructions, and is easy to extend for new tools.
+
+### How does @Tool fit in?
+The `@Tool` annotation is used in some frameworks (like Spring AI Tool Agent) to automatically expose backend methods as callable tools for an LLM agent. In this demo, the annotation is present for future compatibility, but **the actual tool calling is handled by prompt engineering and output parsing**—not by the annotation itself.
+
+If you use a framework that supports @Tool (like Spring AI Tool Agent), the LLM agent can discover and call these methods automatically, making it even easier to add new tools without writing parsing logic.
+
+### What if the app needs to scale to hundreds of functions?
+For a small number of tools, this approach is simple and effective. For larger applications, consider these options:
+- **Tool/Function Calling Agents:** Use frameworks like Spring AI Tool Agent (Java) or LangChain (Python) to register all your tools. The agent will handle intent detection and tool invocation automatically.
+- **NLU Engines:** For very large or complex apps, use a Natural Language Understanding (NLU) engine (like Rasa, Dialogflow, or an LLM-based agent) to classify user intent and extract parameters, then call the right backend tool.
+- **Hybrid Approach:** Combine prompt engineering, output parsing, and NLU for maximum coverage and flexibility.
+
+### Summary Table
+| Approach                | Best For         | Pros                        | Cons/Limitations                |
+|-------------------------|------------------|-----------------------------|---------------------------------|
+| Prompt + Parsing        | Few tools        | Simple, fast, no extra libs | Not scalable, manual updates    |
+| Tool/Function Calling   | Many tools       | Scalable, easy to extend    | Needs agent/LLM support         |
+| NLU/LLM Agents          | Complex apps     | Most flexible, robust       | More setup, sometimes paid      |
+
+**This demo is designed to be easy to understand, easy to extend, and compatible with free/open-source LLMs.**
+
+--- 
