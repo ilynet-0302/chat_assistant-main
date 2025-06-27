@@ -10,7 +10,6 @@ import jakarta.servlet.http.HttpSession;
 import java.util.Map;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/chat")
@@ -25,48 +24,7 @@ public class ChatController {
     @PostMapping
     public ResponseEntity<Map<String, String>> chat(@RequestBody Map<String, String> payload, HttpSession session) {
         String message = payload.get("message");
-        String llmResponse = chatService.getLLMResponse(message, session);
-
-        Optional<Map<String, String>> toolCall = chatService.parseToolCall(llmResponse);
-        if (toolCall.isPresent()) {
-            Map<String, String> call = toolCall.get();
-            switch (call.get("tool")) {
-                case "register": {
-                    Map<String, Object> result = this.simulateRegister(call.get("email"), call.get("password"), session);
-                    return ResponseEntity.ok(Map.of("response", (String) result.get("message")));
-                }
-                case "login": {
-                    Map<String, Object> result = this.simulateLogin("example.com", call.get("email"), call.get("password"), session);
-                    return ResponseEntity.ok(Map.of("response", (String) result.get("message")));
-                }
-                case "getCurrentUser": {
-                    Map<String, Object> result = this.getCurrentUser(session);
-                    return ResponseEntity.ok(Map.of("response", result.toString()));
-                }
-                case "changePassword": {
-                    Map<String, Object> result = this.changePassword(
-                        call.get("email"),
-                        call.get("oldPassword"),
-                        call.get("newPassword"),
-                        session
-                    );
-                    return ResponseEntity.ok(Map.of("response", (String) result.get("message")));
-                }
-                case "listUsers": {
-                    List<String> users = this.listUsers();
-                    return ResponseEntity.ok(Map.of("response", users.toString()));
-                }
-                case "deleteAccount": {
-                    Map<String, Object> result = this.simulateAccountDeletion(
-                        call.get("email"),
-                        call.get("password"),
-                        session
-                    );
-                    return ResponseEntity.ok(Map.of("response", (String) result.get("message")));
-                }
-            }
-        }
-        // Otherwise, return the LLM's response
+        String llmResponse = chatService.chatWithFunctionCalling(message, session);
         return ResponseEntity.ok(Map.of("response", llmResponse));
     }
 

@@ -1,14 +1,15 @@
 # Chat Assistant Application
 
-A full-stack demo chat assistant with user registration, login, session management, and LLM-driven automation tools. Built with Spring Boot (Java) and a simple HTML/JS frontend. Integrates with a local Ollama LLM server for advanced automation.
+A full-stack demo chat assistant with user registration, login, session management, and robust OpenAI function-calling for backend automation tools. Built with Spring Boot (Java), a simple HTML/JS frontend, and integrates with OpenAI's GPT models via the OpenAI Java SDK.
 
 ---
 
 ## Features
 - User registration and login (with session handling)
-- Chat interface with LLM integration
+- Chat interface with LLM integration (OpenAI GPT)
 - Login info panel and logout button
-- Advanced backend tools for registration, login, password change, user listing, and account deletion (exposed for LLM/API automation)
+- Backend tools for registration, login, password change, user listing, and account deletion (exposed for LLM/API automation)
+- All tool-calling is handled via OpenAI's function-calling API for reliability and scalability
 
 ---
 
@@ -51,7 +52,7 @@ A full-stack demo chat assistant with user registration, login, session manageme
 - **User data:** Stored in `users.txt` as `example.com,email,password`
 
 ### Endpoints
-- `POST /api/chat` — Receives chat messages, returns bot responses.
+- `POST /api/chat` — Receives chat messages, returns bot responses (with tool-calling support).
 - `POST /api/login` — Receives login info, authenticates, updates session.
 - `POST /api/register` — Registers a new user.
 - `POST /api/logout` — Logs out the current user.
@@ -59,52 +60,49 @@ A full-stack demo chat assistant with user registration, login, session manageme
 
 ---
 
-## 3. LLM Integration
-- The backend talks to a local Ollama server running Llama 3.
-- The LLM is prompted to output structured JSON for automation commands (like login/register).
-- The backend extracts and acts on these commands if present.
+## 3. LLM Integration (OpenAI Function Calling)
+
+- The backend uses the [OpenAI Java SDK](https://github.com/TheoKanning/openai-java) to connect to OpenAI's GPT models (e.g., `gpt-3.5-turbo-1106`).
+- All backend tools are registered as OpenAI functions using the SDK's function-calling API.
+- When a user sends a message, the backend sends the message and all available tools to OpenAI.
+- If the LLM decides a tool should be called, it returns a function call with structured arguments, which the backend executes and returns the result.
+
+### Example: Register Function
+
+```java
+public static class RegisterParams {
+    public String email;
+    public String password;
+}
+
+ChatFunction registerFunction = ChatFunction.builder()
+    .name("register")
+    .description("Register a new user")
+    .executor(RegisterParams.class, params -> this.simulateRegister(params.email, params.password, session))
+    .build();
+```
 
 ---
 
 ## 4. Session Handling
+
 - The backend uses HTTP sessions to remember if a user is "logged in" and their email/site.
-- No real authentication is performed; it's all simulated for demonstration.
+- All authentication is simulated for demonstration.
 
 ---
 
-## 5. Advanced Tools via @Tool in ChatController
+## 5. Available Tools (Function-Calling)
 
-The following tools are exposed for LLM or API-driven automation. These can be called by the LLM or via backend integration for advanced flows.
+The following tools are exposed to the LLM and can be called automatically:
 
-### 5.1. Simulate Login
-**Method:** `simulateLogin(String email, String password, HttpSession session)`
-- Simulates a login and sets session attributes.
-- **Returns:** `{ action: "login", email, password, site, message }`
-
-### 5.2. Simulate Registration
-**Method:** `simulateRegister(String email, String password, HttpSession session)`
-- Registers a new user.
-- **Returns:** `{ action: "register", email, success, message }`
-
-### 5.3. Get Current User
-**Method:** `getCurrentUser(HttpSession session)`
-- Returns info about the currently logged-in user.
-- **Returns:** `{ loggedIn, email, site }`
-
-### 5.4. Change Password
-**Method:** `changePassword(String email, String oldPassword, String newPassword, HttpSession session)`
-- Changes the password for the logged-in user (requires old password).
-- **Returns:** `{ success, message }`
-
-### 5.5. List All Users
-**Method:** `listUsers()`
-- Lists all registered user emails for `example.com`.
-- **Returns:** `[ "user1@example.com", "user2@example.com", ... ]`
-
-### 5.6. Simulate Account Deletion
-**Method:** `simulateAccountDeletion(String email, String password, HttpSession session)`
-- Deletes the logged-in user's account (sets password to `__DELETED__` and logs out).
-- **Returns:** `{ success, message }`
+| Tool Name         | Description                        | Parameters                                 | Returns                        |
+|-------------------|------------------------------------|--------------------------------------------|---------------------------------|
+| register          | Register a new user                | `email`, `password`                        | `{ success, message }`          |
+| login             | Login a user                       | `email`, `password`                        | `{ message }`                   |
+| getCurrentUser    | Get current user info              | *(none)*                                   | `{ loggedIn, email, site }`     |
+| changePassword    | Change user password               | `email`, `oldPassword`, `newPassword`      | `{ success, message }`          |
+| listUsers         | List all users                     | *(none)*                                   | `[ "user1@example.com", ... ]`  |
+| deleteAccount     | Delete user account                | `email`, `password`                        | `{ success, message }`          |
 
 ---
 
@@ -128,93 +126,65 @@ POST /api/login
 }
 ```
 
-### Change Password (via tool)
-```json
-{
-  "email": "test@example.com",
-  "oldPassword": "1234",
-  "newPassword": "newpass"
-}
-```
-
-### LLM Tool Call Example
-The LLM can output:
-```json
-{
-  "action": "register",
-  "email": "newuser@example.com",
-  "password": "pass123"
-}
-```
-And the backend will process registration automatically.
-
 ---
 
-## 7. Notes
-- All user data is stored in plain text in `users.txt` for demo purposes.
-- The tools are for demonstration and can be extended for more advanced automation or admin features.
+## 7. Setup & Configuration
+
+### Prerequisites
+
+- Java 21+
+- Maven
+
+### 1. Clone the repository
+
+```sh
+git clone <your-repo-url>
+cd chat_assistant-main
+```
+
+### 2. Add your OpenAI API key
+
+Edit `src/main/resources/application.properties`:
+
+```
+spring.ai.openai.api-key=sk-...your_openai_key_here...
+spring.ai.openai.model=gpt-3.5-turbo
+```
+
+### 3. Build and run
+
+```sh
+./mvnw clean install
+./mvnw spring-boot:run
+```
+
+### 4. Open the app
+
+Visit [http://localhost:8080/chat.html](http://localhost:8080/chat.html)
 
 ---
 
 ## 8. Example Prompts for LLM
 
-Here are example phrases you can type to the chat assistant to trigger each tool:
-
-### Register
 - "Register me with email test@example.com and password 1234."
-- "I want to create a new account. My email is newuser@example.com and my password is pass123."
-
-### Login
 - "Log me in with email test@example.com and password 1234."
-- "Sign in as test@example.com, password 1234."
-
-### Get Current User
 - "Who am I logged in as?"
-- "Am I currently logged in?"
-
-### Change Password
 - "Change my password from 1234 to newpass."
-- "I want to update my password. My old password is 1234, my new password is newpass."
-
-### List All Users (admin/demo)
 - "Show me all registered users."
-- "List all user emails."
-
-### Delete Account
 - "Delete my account. My password is 1234."
-- "I want to remove my account. Password: 1234."
 
-The LLM will recognize these requests and call the appropriate backend tool, automating the process for the user. 
+The LLM will recognize these requests and call the appropriate backend tool, automating the process for the user.
 
 ---
 
-## 9. Why This Approach? Tool Calling, @Tool, and Scaling Options
+## 9. Notes
 
-### Why is the program designed this way?
-This application demonstrates how to connect a local LLM (like Llama 3) to backend automation tools in a way that is both practical and compatible with open-source models. Instead of relying on advanced (and often paid) LLM features like "native function calling," the backend uses a combination of:
-- **Prompt engineering:** The LLM is instructed to output a JSON object for specific actions (like registration, login, etc.).
-- **Output parsing:** The backend checks if the LLM's response matches a tool call, and if so, executes the corresponding Java method.
+- All user data is stored in plain text in `users.txt` for demo purposes.
+- The tools are for demonstration and can be extended for more advanced automation or admin features.
+- The backend uses robust OpenAI function-calling, not prompt/JSON parsing, for reliable tool invocation.
 
-This approach is robust, works with any LLM that can follow instructions, and is easy to extend for new tools.
+---
 
-### How does @Tool fit in?
-The `@Tool` annotation is used in some frameworks (like Spring AI Tool Agent) to automatically expose backend methods as callable tools for an LLM agent. In this demo, the annotation is present for future compatibility, but **the actual tool calling is handled by prompt engineering and output parsing**—not by the annotation itself.
+## 10. License
 
-If you use a framework that supports @Tool (like Spring AI Tool Agent), the LLM agent can discover and call these methods automatically, making it even easier to add new tools without writing parsing logic.
-
-### What if the app needs to scale to hundreds of functions?
-For a small number of tools, this approach is simple and effective. For larger applications, consider these options:
-- **Tool/Function Calling Agents:** Use frameworks like Spring AI Tool Agent (Java) or LangChain (Python) to register all your tools. The agent will handle intent detection and tool invocation automatically.
-- **NLU Engines:** For very large or complex apps, use a Natural Language Understanding (NLU) engine (like Rasa, Dialogflow, or an LLM-based agent) to classify user intent and extract parameters, then call the right backend tool.
-- **Hybrid Approach:** Combine prompt engineering, output parsing, and NLU for maximum coverage and flexibility.
-
-### Summary Table
-| Approach                | Best For         | Pros                        | Cons/Limitations                |
-|-------------------------|------------------|-----------------------------|---------------------------------|
-| Prompt + Parsing        | Few tools        | Simple, fast, no extra libs | Not scalable, manual updates    |
-| Tool/Function Calling   | Many tools       | Scalable, easy to extend    | Needs agent/LLM support         |
-| NLU/LLM Agents          | Complex apps     | Most flexible, robust       | More setup, sometimes paid      |
-
-**This demo is designed to be easy to understand, easy to extend, and compatible with free/open-source LLMs.**
-
---- 
+MIT 

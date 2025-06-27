@@ -1,146 +1,263 @@
 package com.example.chat_assistant.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.theokanning.openai.service.OpenAiService;
+import com.theokanning.openai.completion.chat.*;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
-import org.springframework.http.*;
-import java.util.*;
+import jakarta.annotation.PostConstruct;
 import jakarta.servlet.http.HttpSession;
-import java.util.regex.*;
+import java.util.*;
 
 @Service
 public class ChatService {
-    private static final String OLLAMA_URL = "http://172.31.168.2:11434/api/chat";
-    private static final String MODEL = "llama3.1";
-    private final RestTemplate restTemplate = new RestTemplate();
+    @Value("${spring.ai.openai.api-key}")
+    private String openAiApiKey;
 
-    public enum IntentType { REGISTER, LOGIN, CHAT }
+    private OpenAiService openAiService;
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
-    public static class Intent {
-        public IntentType type;
+    @PostConstruct
+    public void init() {
+        this.openAiService = new OpenAiService(openAiApiKey);
+    }
+
+    // --- Parameter POJOs for function-calling ---
+    public static class RegisterParams {
         public String email;
         public String password;
     }
-
-    public Intent parseIntent(String message) {
-        // Registration intent
-        Pattern regPattern = Pattern.compile("register.*email\\s*([\\w.@-]+).*password\\s*([\\w!@#$%^&*()_+=-]+)", Pattern.CASE_INSENSITIVE);
-        Matcher regMatcher = regPattern.matcher(message);
-        if (regMatcher.find()) {
-            Intent intent = new Intent();
-            intent.type = IntentType.REGISTER;
-            intent.email = regMatcher.group(1);
-            intent.password = regMatcher.group(2);
-            return intent;
-        }
-        // Login intent
-        Pattern loginPattern = Pattern.compile("log ?in.*email\\s*([\\w.@-]+).*password\\s*([\\w!@#$%^&*()_+=-]+)", Pattern.CASE_INSENSITIVE);
-        Matcher loginMatcher = loginPattern.matcher(message);
-        if (loginMatcher.find()) {
-            Intent intent = new Intent();
-            intent.type = IntentType.LOGIN;
-            intent.email = loginMatcher.group(1);
-            intent.password = loginMatcher.group(2);
-            return intent;
-        }
-        // Default: treat as chat
-        Intent intent = new Intent();
-        intent.type = IntentType.CHAT;
-        return intent;
+    public static class LoginParams {
+        public String email;
+        public String password;
     }
+    public static class ChangePasswordParams {
+        public String email;
+        public String oldPassword;
+        public String newPassword;
+    }
+    public static class DeleteAccountParams {
+        public String email;
+        public String password;
+    }
+    // For functions with no parameters
+    public static class NoParams {}
 
-    public String getLLMResponse(String message, HttpSession session) {
-        try {
-            Map<String, Object> requestBody = new HashMap<>();
-            requestBody.put("model", MODEL);
-            requestBody.put("stream", false);
-            List<Map<String, String>> messages = new ArrayList<>();
-            messages.add(Map.of(
-            "role", "system",
-            "content", "You are a helpful assistant. If the user wants to register, output ONLY a JSON object like: {\"tool\": \"register\", \"email\": \"user@example.com\", \"password\": \"1234\"}. If the user wants to log in, output ONLY a JSON object like: {\"tool\": \"login\", \"email\": \"user@example.com\", \"password\": \"1234\"}. If the user wants to see their account info, output ONLY a JSON object like: {\"tool\": \"getCurrentUser\"}. If the user wants to change their password, output ONLY a JSON object like: {\"tool\": \"changePassword\", \"email\": \"user@example.com\", \"oldPassword\": \"oldpass\", \"newPassword\": \"newpass\"}. If the user wants to list all users, output ONLY a JSON object like: {\"tool\": \"listUsers\"}. If the user wants to delete their account, output ONLY a JSON object like: {\"tool\": \"deleteAccount\", \"email\": \"user@example.com\", \"password\": \"1234\"}. For all other questions, answer normally."
-            ));
-            messages.add(Map.of("role", "user", "content", message));
-            requestBody.put("messages", messages);
+    public String chatWithFunctionCalling(String message, HttpSession session) {
+        ChatFunction registerFunction = ChatFunction.builder()
+            .name("register")
+            .description("Register a new user")
+            .executor(RegisterParams.class, params -> this.simulateRegister(params.email, params.password, session))
+            .build();
+        ChatFunction loginFunction = ChatFunction.builder()
+            .name("login")
+            .description("Login a user")
+            .executor(LoginParams.class, params -> this.simulateLogin("example.com", params.email, params.password, session))
+            .build();
+        ChatFunction getCurrentUserFunction = ChatFunction.builder()
+            .name("getCurrentUser")
+            .description("Get current user info")
+            .executor(NoParams.class, v -> this.getCurrentUser(session))
+            .build();
+        ChatFunction changePasswordFunction = ChatFunction.builder()
+            .name("changePassword")
+            .description("Change user password")
+            .executor(ChangePasswordParams.class, params -> this.changePassword(params.email, params.oldPassword, params.newPassword, session))
+            .build();
+        ChatFunction listUsersFunction = ChatFunction.builder()
+            .name("listUsers")
+            .description("List all users")
+            .executor(NoParams.class, v -> this.listUsers())
+            .build();
+        ChatFunction deleteAccountFunction = ChatFunction.builder()
+            .name("deleteAccount")
+            .description("Delete user account")
+            .executor(DeleteAccountParams.class, params -> this.simulateAccountDeletion(params.email, params.password, session))
+            .build();
 
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            HttpEntity<Map<String, Object>> entity = new HttpEntity<>(requestBody, headers);
+        ChatMessage userMessage = new ChatMessage("user", message);
+        ChatCompletionRequest request = ChatCompletionRequest.builder()
+            .model("gpt-3.5-turbo-1106")
+            .messages(List.of(userMessage))
+            .functions(List.of(
+                registerFunction,
+                loginFunction,
+                getCurrentUserFunction,
+                changePasswordFunction,
+                listUsersFunction,
+                deleteAccountFunction
+            ))
+            .functionCall(new ChatCompletionRequest.ChatCompletionRequestFunctionCall("auto"))
+            .build();
 
-            ResponseEntity<Map> response = restTemplate.postForEntity(OLLAMA_URL, entity, Map.class);
-            if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                Map respBody = response.getBody();
-                Map msg = (Map) respBody.get("message");
-                if (msg != null && msg.get("content") != null) {
-                    String content = msg.get("content").toString();
-                    // Try to extract a JSON object from the response
-                    String json = extractJson(content);
-                    if (json != null) {
-                        try {
-                            Map<String, Object> action = new com.fasterxml.jackson.databind.ObjectMapper().readValue(json, Map.class);
-                            if ("login".equals(action.get("action"))) {
-                                String email = (String) action.getOrDefault("email", "[no email]");
-                                // Store login state in session
-                                session.setAttribute("loggedIn", true);
-                                session.setAttribute("site", "example.com");
-                                session.setAttribute("email", email);
-                                return "Simulated login to example.com as " + email + ". You are now logged in!";
-                            } else if ("register".equals(action.get("action"))) {
-                                String email = (String) action.getOrDefault("email", "[no email]");
-                                return "Simulated registration at example.com for " + email + ".";
-                            } else if ("getCurrentUser".equals(action.get("action"))) {
-                                return "Simulated account info retrieval.";
-                            } else if ("changePassword".equals(action.get("action"))) {
-                                String email = (String) action.getOrDefault("email", "[no email]");
-                                String oldPassword = (String) action.getOrDefault("oldPassword", "[no old password]");
-                                String newPassword = (String) action.getOrDefault("newPassword", "[no new password]");
-                                return "Simulated password change at example.com for " + email + ". Old password: " + oldPassword + ", New password: " + newPassword;
-                            } else if ("listUsers".equals(action.get("action"))) {
-                                return "Simulated list of all users.";
-                            } else if ("deleteAccount".equals(action.get("action"))) {
-                                String email = (String) action.getOrDefault("email", "[no email]");
-                                String password = (String) action.getOrDefault("password", "[no password]");
-                                return "Simulated account deletion at example.com for " + email + ". Password: " + password;
-                            } else if ("none".equals(action.get("action"))) {
-                                return "No actionable command detected.";
-                            }
-                        } catch (Exception ignore) {}
+        ChatCompletionResult result = openAiService.createChatCompletion(request);
+        ChatCompletionChoice choice = result.getChoices().get(0);
+        if (choice.getMessage().getFunctionCall() != null) {
+            String functionName = choice.getMessage().getFunctionCall().getName();
+            String argumentsJson = choice.getMessage().getFunctionCall().getArguments().toString();
+            try {
+                switch (functionName) {
+                    case "register": {
+                        RegisterParams args = objectMapper.readValue(argumentsJson, RegisterParams.class);
+                        Map<String, Object> resultMap = this.simulateRegister(args.email, args.password, session);
+                        return (String) resultMap.get("message");
                     }
-                    // If user is logged in, show simulated account info
-                    if (Boolean.TRUE.equals(session.getAttribute("loggedIn"))) {
-                        String email = (String) session.getAttribute("email");
-                        return content + "\n\n[Logged in as " + email + " at example.com]";
+                    case "login": {
+                        LoginParams args = objectMapper.readValue(argumentsJson, LoginParams.class);
+                        Map<String, Object> resultMap = this.simulateLogin("example.com", args.email, args.password, session);
+                        return (String) resultMap.get("message");
                     }
-                    return content;
+                    case "getCurrentUser": {
+                        Map<String, Object> resultMap = this.getCurrentUser(session);
+                        return resultMap.toString();
+                    }
+                    case "changePassword": {
+                        ChangePasswordParams args = objectMapper.readValue(argumentsJson, ChangePasswordParams.class);
+                        Map<String, Object> resultMap = this.changePassword(
+                            args.email,
+                            args.oldPassword,
+                            args.newPassword,
+                            session
+                        );
+                        return (String) resultMap.get("message");
+                    }
+                    case "listUsers": {
+                        List<String> users = this.listUsers();
+                        return users.toString();
+                    }
+                    case "deleteAccount": {
+                        DeleteAccountParams args = objectMapper.readValue(argumentsJson, DeleteAccountParams.class);
+                        Map<String, Object> resultMap = this.simulateAccountDeletion(
+                            args.email,
+                            args.password,
+                            session
+                        );
+                        return (String) resultMap.get("message");
+                    }
                 }
+            } catch (Exception e) {
+                return "[Error handling function call: " + e.getMessage() + "]";
             }
-            return "[No response from LLM]";
-        } catch (Exception e) {
-            return "[Error contacting LLM: " + e.getMessage() + "]";
         }
+        return choice.getMessage().getContent();
     }
 
-    private String extractJson(String text) {
-        int start = text.indexOf('{');
-        int end = text.lastIndexOf('}');
-        if (start != -1 && end != -1 && end > start) {
-            return text.substring(start, end + 1);
+    // --- Your tool methods (simulateRegister, simulateLogin, getCurrentUser, changePassword, listUsers, simulateAccountDeletion) go here ---
+    public Map<String, Object> simulateRegister(String email, String password, HttpSession session) {
+        Map<String, Object> result = new HashMap<>();
+        if (email == null || !email.contains("@") || password == null) {
+            result.put("success", false);
+            result.put("message", "Missing or invalid registration data.");
+            return result;
         }
-        return null;
+        boolean registered = false;
+        if (authService != null) {
+            registered = authService.register(email, password, "example.com");
+        }
+        result.put("action", "register");
+        result.put("email", email);
+        result.put("success", registered);
+        result.put("message", registered ? "Registration successful." : "Email already registered.");
+        return result;
     }
 
-    private static final Pattern TOOL_CALL_PATTERN = Pattern.compile(
-        "\\{\\s*\\\"tool\\\"\\s*:\\s*\\\"(register|login|getCurrentUser|changePassword|listUsers|deleteAccount)\\\"(,\\s*\\\"email\\\"\\s*:\\s*\\\"([^\\\"]*)\\\")?(,\\s*\\\"password\\\"\\s*:\\s*\\\"([^\\\"]*)\\\")?(,\\s*\\\"oldPassword\\\"\\s*:\\s*\\\"([^\\\"]*)\\\")?(,\\s*\\\"newPassword\\\"\\s*:\\s*\\\"([^\\\"]*)\\\")?\\s*\\}");
-
-    public Optional<Map<String, String>> parseToolCall(String llmOutput) {
-        Matcher matcher = TOOL_CALL_PATTERN.matcher(llmOutput);
-        if (matcher.find()) {
-            Map<String, String> toolCall = new HashMap<>();
-            toolCall.put("tool", matcher.group(1));
-            if (matcher.group(3) != null) toolCall.put("email", matcher.group(3));
-            if (matcher.group(5) != null) toolCall.put("password", matcher.group(5));
-            if (matcher.group(7) != null) toolCall.put("oldPassword", matcher.group(7));
-            if (matcher.group(9) != null) toolCall.put("newPassword", matcher.group(9));
-            return Optional.of(toolCall);
+    public Map<String, Object> simulateLogin(String ignoredSite, String email, String password, HttpSession session) {
+        Map<String, Object> result = new HashMap<>();
+        if (email == null || !email.contains("@") || password == null) {
+            result.put("success", false);
+            result.put("message", "Missing or invalid login data.");
+            return result;
         }
-        return Optional.empty();
+        if (email == null || password == null) {
+            result.put("action", "none");
+            result.put("message", "Not enough data to simulate login.");
+            return result;
+        }
+        session.setAttribute("loggedIn", true);
+        session.setAttribute("email", email);
+        session.setAttribute("site", "example.com");
+        result.put("action", "login");
+        result.put("email", email);
+        result.put("password", password);
+        result.put("site", "example.com");
+        result.put("message", "Logged in successfully.");
+        return result;
+    }
+
+    public Map<String, Object> getCurrentUser(HttpSession session) {
+        Map<String, Object> result = new HashMap<>();
+        result.put("loggedIn", Boolean.TRUE.equals(session.getAttribute("loggedIn")));
+        result.put("email", session.getAttribute("email"));
+        result.put("site", "example.com");
+        return result;
+    }
+
+    public Map<String, Object> changePassword(String email, String oldPassword, String newPassword, HttpSession session) {
+        Map<String, Object> result = new HashMap<>();
+        boolean loggedIn = Boolean.TRUE.equals(session.getAttribute("loggedIn"));
+        if (!loggedIn || !email.equals(session.getAttribute("email"))) {
+            result.put("success", false);
+            result.put("message", "Not logged in or email mismatch.");
+            return result;
+        }
+        boolean valid = false;
+        if (authService != null) {
+            valid = authService.login(email, oldPassword, "example.com");
+        }
+        if (!valid) {
+            result.put("success", false);
+            result.put("message", "Old password incorrect.");
+            return result;
+        }
+        boolean changed = false;
+        if (authService != null) {
+            changed = authService.changePassword(email, newPassword, "example.com");
+        }
+        result.put("success", changed);
+        result.put("message", changed ? "Password changed." : "Failed to change password.");
+        return result;
+    }
+
+    public List<String> listUsers() {
+        if (authService != null) {
+            return authService.getAllEmails("example.com");
+        }
+        return Collections.emptyList();
+    }
+
+    public Map<String, Object> simulateAccountDeletion(String email, String password, HttpSession session) {
+        Map<String, Object> result = new HashMap<>();
+        boolean loggedIn = Boolean.TRUE.equals(session.getAttribute("loggedIn"));
+        if (!loggedIn || !email.equals(session.getAttribute("email"))) {
+            result.put("success", false);
+            result.put("message", "Not logged in or email mismatch.");
+            return result;
+        }
+        boolean valid = false;
+        if (authService != null) {
+            valid = authService.login(email, password, "example.com");
+        }
+        if (!valid) {
+            result.put("success", false);
+            result.put("message", "Password incorrect.");
+            return result;
+        }
+        boolean deleted = false;
+        if (authService != null) {
+            deleted = authService.changePassword(email, "__DELETED__", "example.com");
+        }
+        if (deleted) {
+            session.invalidate();
+        }
+        result.put("success", deleted);
+        result.put("message", deleted ? "Account deleted." : "Failed to delete account.");
+        return result;
+    }
+
+    // Inject AuthService
+    private final com.example.chat_assistant.service.AuthService authService;
+
+    public ChatService(com.example.chat_assistant.service.AuthService authService) {
+        this.authService = authService;
     }
 } 

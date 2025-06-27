@@ -14,6 +14,7 @@ public class AuthService {
         if (users.containsKey(email)) {
             return false; // already exists
         }
+        System.out.println("Registering user: " + email + " at file: " + USER_FILE.getAbsolutePath());
         try (FileWriter fw = new FileWriter(USER_FILE, true)) {
             fw.write(site + "," + email + "," + password + "\n");
             return true;
